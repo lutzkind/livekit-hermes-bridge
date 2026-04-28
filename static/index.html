@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hermes Voice</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d0d0d;
+            color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 480px;
+            width: 100%;
+        }
+        .logo {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+        }
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            color: #888;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+        .call-btn {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 3px solid #333;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-size: 2.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0 auto 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .call-btn:hover { border-color: #667eea; }
+        .call-btn.active {
+            border-color: #ff4444;
+            background: #2a0000;
+            animation: pulse 1.5s infinite;
+        }
+        .call-btn.connecting {
+            border-color: #ffaa00;
+            background: #2a2000;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255,68,68,0.4); }
+            70% { box-shadow: 0 0 0 20px rgba(255,68,68,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); }
+        }
+        .status {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            min-height: 1.5rem;
+            color: #aaa;
+        }
+        .status.active { color: #4ade80; }
+        .status.connecting { color: #fbbf24; }
+        .status.error { color: #f87171; }
+        .transcript {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 1rem;
+            min-height: 100px;
+            max-height: 250px;
+            overflow-y: auto;
+            text-align: left;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        .transcript .msg { margin-bottom: 0.5rem; }
+        .transcript .user { color: #60a5fa; }
+        .transcript .agent { color: #34d399; }
+        .transcript .label { font-weight: 600; margin-right: 0.5rem; }
+        .controls {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+        .controls button {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .controls button:hover { border-color: #667eea; }
+        .controls button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .volume-indicator {
+            width: 200px;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            margin: 0.5rem auto;
+            overflow: hidden;
+        }
+        .volume-indicator .bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.1s;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="logo">🎧</div>
+    <h1>Hermes Voice</h1>
+    <p class="subtitle">Real-time voice conversation with Hermes Agent</p>
+
+    <button class="call-btn" id="callBtn" onclick="toggleCall()">
+        <span id="callIcon">📞</span>
+    </button>
+
+    <div class="status" id="status">Ready to call</div>
+    <div class="volume-indicator"><div class="bar" id="volumeBar"></div></div>
+
+    <div class="transcript" id="transcript">
+        <div class="msg" style="color:#666; text-align:center; padding-top:1.5rem;">
+            Press 📞 to start talking
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="muteBtn" onclick="toggleMute()" disabled>🔊 Mute</button>
+        <button onclick="clearTranscript()">🗑️ Clear</button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<script>
+    let room = null;
+    let audioTrack = null;
+    let isCalling = false;
+    let isMuted = false;
+    let audioContext = null;
+    let transcript = [];
+
+    const callBtn = document.getElementById('callBtn');
+    const callIcon = document.getElementById('callIcon');
+    const statusEl = document.getElementById('status');
+    const transcriptEl = document.getElementById('transcript');
+    const volumeBar = document.getElementById('volumeBar');
+    const muteBtn = document.getElementById('muteBtn');
+
+    function addTranscript(type, text) {
+        transcript.push({ type, text, time: Date.now() });
+        const div = document.createElement('div');
+        div.className = 'msg';
+        div.innerHTML = `<span class="label ${type}">${type === 'user' ? 'You' : 'Hermes'}:</span>${escapeHtml(text)}`;
+        transcriptEl.appendChild(div);
+        transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function clearTranscript() {
+        transcript = [];
+        transcriptEl.innerHTML = '<div class="msg" style="color:#666; text-align:center; padding-top:1.5rem;">Conversation cleared</div>';
+    }
+
+    function setStatus(text, type) {
+        statusEl.textContent = text;
+        statusEl.className = 'status' + (type ? ' ' + type : '');
+    }
+
+    async function toggleCall() {
+        if (isCalling) {
+            await hangUp();
+        } else {
+            await startCall();
+        }
+    }
+
+    async function startCall() {
+        setStatus('Creating room...', 'connecting');
+        callBtn.classList.add('connecting');
+
+        try {
+            // Create a room via the bridge API
+            const res = await fetch('/api/room', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            if (!res.ok) throw new Error('Failed to create room');
+            const data = await res.json();
+
+            setStatus('Connecting...', 'connecting');
+
+            // Connect to LiveKit
+            room = new LivekitClient.Room({
+                adaptiveStream: true,
+                dynacast: true,
+            });
+
+            room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication) => {
+                if (track.kind === 'audio') {
+                    const audioEl = new Audio();
+                    audioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
+                    audioEl.play();
+                    setStatus('Connected — speak freely', 'active');
+                    callBtn.classList.remove('connecting');
+                    callBtn.classList.add('active');
+                    callIcon.textContent = '🔴';
+                    addTranscript('agent', 'Hello, I\'m Hermes. Go ahead, I\'m listening.');
+                }
+            });
+
+            room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
+                try {
+                    const msg = JSON.parse(new TextDecoder().decode(payload));
+                    if (msg.type === 'transcript') {
+                        addTranscript('user', msg.text);
+                    }
+                } catch(e) {}
+            });
+
+            room.on(LivekitClient.RoomEvent.Disconnected, () => {
+                setStatus('Disconnected', '');
+                callBtn.classList.remove('active', 'connecting');
+                callIcon.textContent = '📞';
+                isCalling = false;
+            });
+
+            room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
+                if (state === 'disconnected') {
+                    setStatus('Disconnected');
+                    callBtn.classList.remove('active', 'connecting');
+                    callIcon.textContent = '📞';
+                    isCalling = false;
+                }
+            });
+
+            // Publish microphone
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioTrack = await room.localParticipant.enableAudioTrack(stream.getAudioTracks()[0]);
+
+            // Connect to room
+            await room.connect(data.ws_url, data.token);
+            isCalling = true;
+            muteBtn.disabled = false;
+
+            // Set up volume monitoring
+            setupVolumeMonitor(stream);
+
+        } catch (err) {
+            console.error('Call failed:', err);
+            setStatus(`Error: ${err.message}`, 'error');
+            callBtn.classList.remove('connecting', 'active');
+            callIcon.textContent = '📞';
+        }
+    }
+
+    function setupVolumeMonitor(stream) {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        function update() {
+            if (!isCalling) return;
+            analyser.getByteFrequencyData(dataArray);
+            const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            volumeBar.style.width = Math.min(100, (avg / 128) * 100) + '%';
+            requestAnimationFrame(update);
+        }
+        update();
+    }
+
+    async function hangUp() {
+        setStatus('Disconnecting...', 'connecting');
+        if (audioTrack) {
+            audioTrack.stop();
+            audioTrack = null;
+        }
+        if (room) {
+            await room.disconnect();
+            room = null;
+        }
+        isCalling = false;
+        callBtn.classList.remove('active', 'connecting');
+        callIcon.textContent = '📞';
+        muteBtn.disabled = true;
+        volumeBar.style.width = '0%';
+        setStatus('Disconnected');
+    }
+
+    function toggleMute() {
+        if (!audioTrack) return;
+        isMuted = !isMuted;
+        audioTrack.enabled = !isMuted;
+        muteBtn.textContent = isMuted ? '🔇 Muted' : '🔊 Unmute';
+    }
+</script>
+</body>
+</html>

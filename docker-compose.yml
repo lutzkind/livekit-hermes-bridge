@@ -1,0 +1,72 @@
+version: "3.8"
+
+services:
+  # ── LiveKit Server ─────────────────────────────────────────────
+  livekit-server:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    ports:
+      - "7880:7880"  # WebRTC
+      - "7881:7881"  # TCP TURN
+      - "7882:7882/udp"  # UDP TURN
+    environment:
+      LIVEKIT_KEYS: "devkey: ${LIVEKIT_API_SECRET:-secret}"
+      LIVEKIT_ADDRESS: "0.0.0.0"
+      LIVEKIT_PORT: "7880"
+      LIVEKIT_RTC_PORT: "7881"
+      LIVEKIT_RTC_UDP_PORT: "7882"
+      LIVEKIT_TURN_ENABLED: "true"
+      LIVEKIT_TURN_DOMAIN: "${PUBLIC_IP:-localhost}"
+    volumes:
+      - livekit_data:/var/lib/livekit
+
+  # ── Bridge Web Server ──────────────────────────────────────────
+  bridge:
+    build: .
+    image: livekit-hermes-bridge:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+      LIVEKIT_HOST: "http://livekit-server:7880"
+      LIVEKIT_API_KEY: "devkey"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:-secret}"
+      LIVEKIT_WS_URL: "ws://livekit-server:7880"
+      HERMES_API_URL: "${HERMES_API_URL:-http://hermes-api:8080/v1}"
+      HERMES_API_KEY: "${HERMES_API_KEY:-}"
+      HERMES_MODEL: "${HERMES_MODEL:-deepseek-v4-flash}"
+      STT_MODEL: "${STT_MODEL:-base}"
+      TTS_VOICE: "${TTS_VOICE:-en-US-EricNeural}"
+      TTS_RATE: "${TTS_RATE:-+0%}"
+      AGENT_NAME: "Hermes"
+    depends_on:
+      - livekit-server
+    volumes:
+      - whisper_cache:/root/.cache
+
+  # ── Voice Agent Worker ─────────────────────────────────────────
+  voice-agent:
+    build: .
+    image: livekit-hermes-bridge:latest
+    restart: unless-stopped
+    command: ["python", "voice_agent.py"]
+    environment:
+      LIVEKIT_HOST: "http://livekit-server:7880"
+      LIVEKIT_API_KEY: "devkey"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:-secret}"
+      HERMES_API_URL: "${HERMES_API_URL:-http://hermes-api:8080/v1}"
+      HERMES_API_KEY: "${HERMES_API_KEY:-}"
+      HERMES_MODEL: "${HERMES_MODEL:-deepseek-v4-flash}"
+      STT_MODEL: "${STT_MODEL:-base}"
+      TTS_VOICE: "${TTS_VOICE:-en-US-EricNeural}"
+      TTS_RATE: "${TTS_RATE:-+0%}"
+      AGENT_NAME: "Hermes"
+    depends_on:
+      - livekit-server
+    volumes:
+      - whisper_cache:/root/.cache
+
+volumes:
+  livekit_data:
+  whisper_cache:
