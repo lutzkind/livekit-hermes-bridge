@@ -6,8 +6,10 @@ services:
     build: .
     image: livekit-hermes-bridge:latest
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       PORT: "8000"
       LIVEKIT_HOST: "${LIVEKIT_HOST}"
@@ -29,12 +31,13 @@ services:
     build: .
     image: livekit-hermes-bridge:latest
     restart: unless-stopped
-    command: ["python", "voice_agent.py"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["python", "voice_agent.py", "start"]
     environment:
-      LIVEKIT_HOST: "${LIVEKIT_HOST}"
+      LIVEKIT_URL: "${LIVEKIT_WS_URL}"
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
-      LIVEKIT_WS_URL: "${LIVEKIT_WS_URL}"
       HERMES_API_URL: "${HERMES_API_URL}"
       HERMES_API_KEY: "${HERMES_API_KEY}"
       HERMES_MODEL: "${HERMES_MODEL:-deepseek-v4-flash}"

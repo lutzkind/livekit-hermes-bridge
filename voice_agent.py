@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-LiveKit Voice Agent — the worker process that handles voice conversations.
+LiveKit Voice Agent (API v1.5) — the worker process that handles voice conversations.
 Runs as a separate process, joins rooms when dispatched, and processes
-audio through STT → LLM → TTS using the same config as Hermes Telegram.
+audio through STT → LLM → TTS pipeline.
 """
 
 import os
@@ -26,8 +26,7 @@ from livekit.agents import (
     tts as tts_module,
     vad as vad_module,
 )
-from livekit.agents.voice import VoicePipelineAgent
-from livekit.agents.pipeline import VoicePipelineAgent
+from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import silero
 
 logger = logging.getLogger("voice-agent")
@@ -44,35 +43,13 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "Hermes")
 
 def prewarm(proc: JobProcess):
     """Called once per process to pre-warm models."""
-    # Pre-load Silero VAD
     proc.userdata["vad"] = silero.VAD.load()
-    # STT model is loaded on first use (lazy)
     proc.userdata["stt_model_size"] = STT_MODEL
 
 
 async def entrypoint(job: JobContext):
     """Main entrypoint when a voice agent is dispatched to a room."""
     logger.info(f"Joining room: {job.room.name}")
-
-    # Create a chat context that sets the agent's personality
-    chat_ctx = llm_module.ChatContext()
-    chat_ctx.append(
-        role="system",
-        text=(
-            f"You are {AGENT_NAME}, an AI voice assistant running on the Hermes Agent platform. "
-            "You are having a real-time voice conversation with the user. "
-            "Keep responses concise and conversational since this is a voice call. "
-            "Be helpful, natural, and engaging.\n\n"
-            "IMPORTANT — Response style rules:\n"
-            "- Only speak the final answer. Never describe your internal thinking, reasoning steps, "
-            "tool calls, function calls, or any intermediate processing.\n"
-            "- Never mention that you are using tools, searching the web, accessing memory, or "
-            "running any internal processes.\n"
-            "- Just respond directly as if the answer came naturally to you.\n"
-            "- Keep responses short and conversational — this is a real-time voice call.\n"
-            "- If you don't know something, say so simply without over-explaining."
-        ),
-    )
 
     # ── LLM — OpenAI-compatible, pointed at Hermes API ─────
     from openai import AsyncOpenAI
@@ -96,14 +73,10 @@ async def entrypoint(job: JobContext):
             n: Optional[int] = 1,
             parallel_tool_calls: Optional[bool] = False,
         ) -> "llm_module.ChatResponse":
-            # Convert livekit message format to OpenAI format
             openai_messages = []
             for msg in messages:
                 role = msg.role if msg.role in ("user", "assistant", "system") else "user"
-                openai_messages.append({
-                    "role": role,
-                    "content": msg.text or "",
-                })
+                openai_messages.append({"role": role, "content": msg.text or ""})
 
             response = await self._client.chat.completions.create(
                 model=HERMES_MODEL,
@@ -138,10 +111,7 @@ async def entrypoint(job: JobContext):
             openai_messages = []
             for msg in messages:
                 role = msg.role if msg.role in ("user", "assistant", "system") else "user"
-                openai_messages.append({
-                    "role": role,
-                    "content": msg.text or "",
-                })
+                openai_messages.append({"role": role, "content": msg.text or ""})
 
             stream = await self._client.chat.completions.create(
                 model=HERMES_MODEL,
@@ -150,12 +120,10 @@ async def entrypoint(job: JobContext):
                 stream=True,
             )
 
-            buffer = []
             async for chunk in stream:
                 if chunk.choices and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
                     if delta and delta.content:
-                        buffer.append(delta.content)
                         yield llm_module.ChatChunk(
                             choices=[
                                 llm_module.Choice(
@@ -167,7 +135,6 @@ async def entrypoint(job: JobContext):
                             ]
                         )
 
-            # Final chunk with usage
             yield llm_module.ChatChunk(
                 choices=[
                     llm_module.Choice(
@@ -196,7 +163,6 @@ async def entrypoint(job: JobContext):
 
         async def _recognize_impl(self, buffer: np.ndarray, sample_rate: int, language: Optional[str] = None) -> SpeechEvent:
             self._ensure_model()
-            # Convert float32 [-1, 1] to int16
             audio_int16 = (buffer * 32767).astype(np.int16)
             loop = asyncio.get_event_loop()
 
@@ -241,8 +207,6 @@ async def entrypoint(job: JobContext):
                 return SynthesizedAudio(text=text, data=b"")
 
             import io
-            import wave
-            import pydub
             from pydub import AudioSegment
 
             combined = AudioSegment.empty()
@@ -250,44 +214,52 @@ async def entrypoint(job: JobContext):
                 seg = AudioSegment.from_file(io.BytesIO(audio_data), format="mp3")
                 combined += seg
 
-            # Export as raw PCM f32le
             raw = combined.set_frame_rate(24000).set_channels(1).raw_data
             samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32767.0
 
             logger.info(f"TTS: {len(samples)} samples, {len(text)} chars")
             return SynthesizedAudio(text=text, data=samples.tobytes())
 
-    # ── Build the voice pipeline agent ──────────────────────
-    agent = VoicePipelineAgent(
-        vad=job.proc.userdata["vad"],
+    # ── Build the voice pipeline using new API ──────────────
+    vad = job.proc.userdata["vad"]
+
+    # Create the session with STT, VAD, LLM, TTS
+    session = AgentSession(
+        vad=vad,
         stt=WhisperSTT(model_size=STT_MODEL),
         llm=HermesLLM(),
         tts=EdgeTTS(voice=TTS_VOICE, rate=TTS_RATE),
-        chat_ctx=chat_ctx,
         allow_interruptions=True,
-        interrupt_speech_duration=0.5,
-        interrupt_min_words=0,
         min_endpointing_delay=0.8,
-        preemptive_synthesis=True,
+        max_endpointing_delay=2.0,
+        preemptive_generation=True,
     )
 
-    # Join the room and start the agent
+    # Create the voice agent with instructions
+    agent = Agent(
+        instructions=(
+            f"You are {AGENT_NAME}, an AI voice assistant running on the Hermes Agent platform. "
+            "You are having a real-time voice conversation with the user. "
+            "Keep responses concise and conversational since this is a voice call. "
+            "Be helpful, natural, and engaging.\n\n"
+            "IMPORTANT — Response style rules:\n"
+            "- Only speak the final answer. Never describe your internal thinking, reasoning steps, "
+            "tool calls, function calls, or any intermediate processing.\n"
+            "- Never mention that you are using tools, searching the web, accessing memory, or "
+            "running any internal processes.\n"
+            "- Just respond directly as if the answer came naturally to you.\n"
+            "- Keep responses short and conversational — this is a real-time voice call.\n"
+            "- If you don't know something, say so simply without over-explaining."
+        ),
+        allow_interruptions=True,
+    )
+
+    # Connect to the room and start the session
     await job.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    agent.start(job.room)
 
-    logger.info(f"Agent started in room: {job.room.name}")
-
-    @agent.on("user_speech_committed")
-    def on_user_speech(ev):
-        logger.info(f"User spoke: {ev}")
-
-    @agent.on("agent_speech_committed")
-    def on_agent_speech(ev):
-        logger.info(f"Agent responded: {ev}")
-
-    # Wait until the job is done (room empty or user disconnected)
-    await job.await_exit()
-    logger.info(f"Room {job.room.name} ended")
+    logger.info(f"Starting session in room: {job.room.name}")
+    result = await session.start(agent, room=job.room)
+    logger.info(f"Session ended: {job.room.name}")
 
 
 if __name__ == "__main__":
