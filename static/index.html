@@ -224,11 +224,11 @@
             // Get microphone stream
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            // Publish audio track (LiveKit v2 API)
+            // Publish audio track (LiveKit v2 API — use string source value)
             const audioTracks = stream.getAudioTracks();
             if (audioTracks.length > 0) {
                 audioTrack = audioTracks[0];
-                const publication = await room.localParticipant.publishTrack(audioTrack, { source: LivekitClient.TrackSource.Microphone });
+                const publication = await room.localParticipant.publishTrack(audioTrack, { source: 'microphone' });
                 console.log('Audio track published');
             }
 
