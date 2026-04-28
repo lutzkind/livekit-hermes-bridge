@@ -1,19 +1,18 @@
 services:
   bridge:
     image: livekit-hermes-bridge:latest
+    build: .
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    ports:
-      - "8001:8000"
     environment:
       PORT: "8000"
       LIVEKIT_HOST: http://livekit-paob6cd3yz6t7cfdwnuahid1.46.224.200.122.sslip.io
-      LIVEKIT_API_KEY: livekit
-      LIVEKIT_API_SECRET: -IQtkom8t_oso7PwZckc746kS9hmsRJ72uibktL1vXXl6EG5
-      LIVEKIT_WS_URL: ws://livekit-paob6cd3yz6t7cfdwnuahid1.46.224.200.122.sslip.io
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
+      LIVEKIT_WS_URL: wss://voice.46.224.200.122.sslip.io:8443/livekit
       HERMES_API_URL: http://host.docker.internal:8642/v1
-      HERMES_API_KEY: hsk_e4e6fad5c071f0f6add3552e5d4dd6011c5be9b9337a2b0d
+      HERMES_API_KEY: "${HERMES_API_KEY}"
       HERMES_MODEL: deepseek-v4-flash
       STT_MODEL: base
       TTS_VOICE: en-US-EricNeural
@@ -22,18 +21,35 @@ services:
 
   voice-agent:
     image: livekit-hermes-bridge:latest
+    build: .
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: ["python", "voice_agent.py", "start"]
     environment:
       LIVEKIT_URL: ws://livekit-paob6cd3yz6t7cfdwnuahid1.46.224.200.122.sslip.io
-      LIVEKIT_API_KEY: livekit
-      LIVEKIT_API_SECRET: -IQtkom8t_oso7PwZckc746kS9hmsRJ72uibktL1vXXl6EG5
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
       HERMES_API_URL: http://host.docker.internal:8642/v1
-      HERMES_API_KEY: hsk_e4e6fad5c071f0f6add3552e5d4dd6011c5be9b9337a2b0d
+      HERMES_API_KEY: "${HERMES_API_KEY}"
       HERMES_MODEL: deepseek-v4-flash
       STT_MODEL: base
       TTS_VOICE: en-US-EricNeural
       TTS_RATE: +0%
       AGENT_NAME: "Hermes"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
