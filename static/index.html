@@ -21,10 +21,7 @@
             max-width: 480px;
             width: 100%;
         }
-        .logo {
-            font-size: 3rem;
-            margin-bottom: 0.5rem;
-        }
+        .logo { font-size: 3rem; margin-bottom: 0.5rem; }
         h1 {
             font-size: 1.8rem;
             font-weight: 600;
@@ -33,36 +30,22 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        .subtitle {
-            color: #888;
-            margin-bottom: 2rem;
-            font-size: 0.95rem;
-        }
+        .subtitle { color: #888; margin-bottom: 2rem; font-size: 0.95rem; }
         .call-btn {
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            border: 3px solid #333;
-            background: #1a1a1a;
-            color: #e0e0e0;
-            font-size: 2.5rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin: 0 auto 1.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 120px; height: 120px; border-radius: 50%;
+            border: 3px solid #333; background: #1a1a1a;
+            color: #e0e0e0; font-size: 2.5rem; cursor: pointer;
+            transition: all 0.3s ease; margin: 0 auto 1.5rem;
+            display: flex; align-items: center; justify-content: center;
             position: relative;
         }
         .call-btn:hover { border-color: #667eea; }
         .call-btn.active {
-            border-color: #ff4444;
-            background: #2a0000;
+            border-color: #ff4444; background: #2a0000;
             animation: pulse 1.5s infinite;
         }
         .call-btn.connecting {
-            border-color: #ffaa00;
-            background: #2a2000;
+            border-color: #ffaa00; background: #2a2000;
             animation: pulse 1s infinite;
         }
         @keyframes pulse {
@@ -70,59 +53,33 @@
             70% { box-shadow: 0 0 0 20px rgba(255,68,68,0); }
             100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); }
         }
-        .status {
-            font-size: 1rem;
-            margin-bottom: 1rem;
-            min-height: 1.5rem;
-            color: #aaa;
-        }
+        .status { font-size: 1rem; margin-bottom: 1rem; min-height: 1.5rem; color: #aaa; }
         .status.active { color: #4ade80; }
         .status.connecting { color: #fbbf24; }
         .status.error { color: #f87171; }
         .transcript {
-            background: #1a1a1a;
-            border-radius: 12px;
-            padding: 1rem;
-            min-height: 100px;
-            max-height: 250px;
-            overflow-y: auto;
-            text-align: left;
-            font-size: 0.9rem;
-            line-height: 1.5;
+            background: #1a1a1a; border-radius: 12px; padding: 1rem;
+            min-height: 100px; max-height: 250px; overflow-y: auto;
+            text-align: left; font-size: 0.9rem; line-height: 1.5;
         }
         .transcript .msg { margin-bottom: 0.5rem; }
         .transcript .user { color: #60a5fa; }
         .transcript .agent { color: #34d399; }
         .transcript .label { font-weight: 600; margin-right: 0.5rem; }
-        .controls {
-            margin-top: 1.5rem;
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-        }
+        .controls { margin-top: 1.5rem; display: flex; gap: 1rem; justify-content: center; }
         .controls button {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #e0e0e0;
-            padding: 0.6rem 1.2rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.2s;
+            background: #1a1a1a; border: 1px solid #333; color: #e0e0e0;
+            padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer;
+            font-size: 0.9rem; transition: all 0.2s;
         }
         .controls button:hover { border-color: #667eea; }
         .controls button:disabled { opacity: 0.3; cursor: not-allowed; }
         .volume-indicator {
-            width: 200px;
-            height: 4px;
-            background: #333;
-            border-radius: 2px;
-            margin: 0.5rem auto;
-            overflow: hidden;
+            width: 200px; height: 4px; background: #333;
+            border-radius: 2px; margin: 0.5rem auto; overflow: hidden;
         }
         .volume-indicator .bar {
-            height: 100%;
-            width: 0%;
+            height: 100%; width: 0%;
             background: linear-gradient(90deg, #667eea, #764ba2);
             transition: width 0.1s;
         }
@@ -161,6 +118,7 @@
     let isMuted = false;
     let audioContext = null;
     let transcript = [];
+    let localAudioEl = null;
 
     const callBtn = document.getElementById('callBtn');
     const callIcon = document.getElementById('callIcon');
@@ -224,14 +182,15 @@
 
             room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication) => {
                 if (track.kind === 'audio') {
-                    const audioEl = new Audio();
-                    audioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
-                    audioEl.play();
+                    if (localAudioEl) localAudioEl.remove();
+                    localAudioEl = new Audio();
+                    localAudioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
+                    localAudioEl.play();
                     setStatus('Connected — speak freely', 'active');
                     callBtn.classList.remove('connecting');
                     callBtn.classList.add('active');
                     callIcon.textContent = '🔴';
-                    addTranscript('agent', 'Hello, I\'m Hermes. Go ahead, I\'m listening.');
+                    addTranscript('agent', `Hello, I'm Hermes. Go ahead, I'm listening.`);
                 }
             });
 
@@ -249,6 +208,7 @@
                 callBtn.classList.remove('active', 'connecting');
                 callIcon.textContent = '📞';
                 isCalling = false;
+                if (localAudioEl) { localAudioEl.remove(); localAudioEl = null; }
             });
 
             room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
@@ -257,12 +217,20 @@
                     callBtn.classList.remove('active', 'connecting');
                     callIcon.textContent = '📞';
                     isCalling = false;
+                    if (localAudioEl) { localAudioEl.remove(); localAudioEl = null; }
                 }
             });
 
-            // Publish microphone
+            // Get microphone stream
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            audioTrack = await room.localParticipant.enableAudioTrack(stream.getAudioTracks()[0]);
+
+            // Publish audio track (LiveKit v2 API)
+            const audioTracks = stream.getAudioTracks();
+            if (audioTracks.length > 0) {
+                audioTrack = audioTracks[0];
+                const publication = await room.localParticipant.publishTrack(audioTrack, { source: LivekitClient.TrackSource.Microphone });
+                console.log('Audio track published');
+            }
 
             // Connect to room
             await room.connect(data.ws_url, data.token);
@@ -310,6 +278,7 @@
             await room.disconnect();
             room = null;
         }
+        if (localAudioEl) { localAudioEl.remove(); localAudioEl = null; }
         isCalling = false;
         callBtn.classList.remove('active', 'connecting');
         callIcon.textContent = '📞';
