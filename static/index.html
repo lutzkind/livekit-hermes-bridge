@@ -114,6 +114,7 @@
 <script>
     let room = null;
     let audioTrack = null;
+    let micStream = null;
     let isCalling = false;
     let isMuted = false;
     let audioContext = null;
@@ -161,9 +162,10 @@
     async function startCall() {
         setStatus('Creating room...', 'connecting');
         callBtn.classList.add('connecting');
+        callIcon.textContent = '⏳';
 
         try {
-            // Create a room via the bridge API
+            // Step 1: Create a room via the bridge API
             const res = await fetch('/api/room', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -174,23 +176,19 @@
 
             setStatus('Connecting...', 'connecting');
 
-            // Connect to LiveKit
+            // Step 2: Set up the Room object
             room = new LivekitClient.Room({
                 adaptiveStream: true,
                 dynacast: true,
             });
 
+            // Set up event handlers BEFORE connecting
             room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication) => {
                 if (track.kind === 'audio') {
                     if (localAudioEl) localAudioEl.remove();
                     localAudioEl = new Audio();
                     localAudioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
                     localAudioEl.play();
-                    setStatus('Connected — speak freely', 'active');
-                    callBtn.classList.remove('connecting');
-                    callBtn.classList.add('active');
-                    callIcon.textContent = '🔴';
-                    addTranscript('agent', `Hello, I'm Hermes. Go ahead, I'm listening.`);
                 }
             });
 
@@ -208,37 +206,34 @@
                 callBtn.classList.remove('active', 'connecting');
                 callIcon.textContent = '📞';
                 isCalling = false;
+                muteBtn.disabled = true;
                 if (localAudioEl) { localAudioEl.remove(); localAudioEl = null; }
+                volumeBar.style.width = '0%';
             });
 
-            room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
-                if (state === 'disconnected') {
-                    setStatus('Disconnected');
-                    callBtn.classList.remove('active', 'connecting');
-                    callIcon.textContent = '📞';
-                    isCalling = false;
-                    if (localAudioEl) { localAudioEl.remove(); localAudioEl = null; }
-                }
-            });
+            // Step 3: Connect to the room FIRST
+            await room.connect(data.ws_url, data.token);
 
-            // Get microphone stream
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-            // Publish audio track (LiveKit v2 API — use string source value)
-            const audioTracks = stream.getAudioTracks();
+            // Step 4: Now that we're connected, get mic and publish
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const audioTracks = micStream.getAudioTracks();
             if (audioTracks.length > 0) {
                 audioTrack = audioTracks[0];
-                const publication = await room.localParticipant.publishTrack(audioTrack, { source: 'microphone' });
+                await room.localParticipant.publishTrack(audioTrack, { source: 'microphone' });
                 console.log('Audio track published');
             }
 
-            // Connect to room
-            await room.connect(data.ws_url, data.token);
+            // All set!
             isCalling = true;
             muteBtn.disabled = false;
+            setStatus('Connected — speak freely', 'active');
+            callBtn.classList.remove('connecting');
+            callBtn.classList.add('active');
+            callIcon.textContent = '🔴';
+            addTranscript('agent', "Hello, I'm Hermes. Go ahead, I'm listening.");
 
             // Set up volume monitoring
-            setupVolumeMonitor(stream);
+            setupVolumeMonitor(micStream);
 
         } catch (err) {
             console.error('Call failed:', err);
@@ -274,7 +269,12 @@
             audioTrack.stop();
             audioTrack = null;
         }
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+        }
         if (room) {
+            room.removeAllListeners();
             await room.disconnect();
             room = null;
         }
