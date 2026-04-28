@@ -82,7 +82,7 @@ async def create_room(req: CreateRoomRequest):
     room_name = req.room_name or f"hermes-{uuid.uuid4().hex[:8]}"
 
     async with LiveKitAPI(
-        host=LIVEKIT_HOST,
+        url=LIVEKIT_HOST,
         api_key=LIVEKIT_API_KEY,
         api_secret=LIVEKIT_API_SECRET,
     ) as lk:
