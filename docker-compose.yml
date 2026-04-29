@@ -12,7 +12,7 @@ services:
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
       LIVEKIT_WS_URL: wss://livekit-bridge.46.224.200.122.sslip.io
       HERMES_API_URL: http://host.docker.internal:8642/v1
-      HERMES_API_KEY: ""
+      HERMES_API_KEY: "${HERMES_API_KEY}"
       HERMES_MODEL: deepseek-v4-flash
       STT_MODEL: base
       TTS_VOICE: en-US-EricNeural
@@ -35,7 +35,7 @@ services:
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
       HERMES_API_URL: http://host.docker.internal:8642/v1
-      HERMES_API_KEY: ""
+      HERMES_API_KEY: "${HERMES_API_KEY}"
       HERMES_MODEL: deepseek-v4-flash
       STT_MODEL: base
       TTS_VOICE: en-US-EricNeural
