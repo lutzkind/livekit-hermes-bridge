@@ -7,10 +7,10 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       PORT: "8000"
-      LIVEKIT_HOST: http://livekit-paob6cd3yz6t7cfdwnuahid1.46.224.200.122.sslip.io
-      LIVEKIT_API_KEY: livekit
-      LIVEKIT_API_SECRET: -IQtkom8t_oso7PwZckc746kS9hmsRJ72uibktL1vXXl6EG5
-      LIVEKIT_WS_URL: wss://livekit-paob6cd3yz6t7cfdwnuahid1.46.224.200.122.sslip.io
+      LIVEKIT_HOST: http://livekit-paob6cd3yz6t7cfdwnuahid1:7880
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
+      LIVEKIT_WS_URL: wss://livekit-bridge.46.224.200.122.sslip.io
       HERMES_API_URL: http://host.docker.internal:8642/v1
       HERMES_API_KEY: ""
       HERMES_MODEL: deepseek-v4-flash
@@ -18,6 +18,10 @@ services:
       TTS_VOICE: en-US-EricNeural
       TTS_RATE: +0%
       AGENT_NAME: "Hermes"
+      LIVEKIT_AGENT_NAME: "hermes-voice"
+    networks:
+      - default
+      - livekit_core
 
   voice-agent:
     image: livekit-hermes-bridge:latest
@@ -27,9 +31,9 @@ services:
       - "host.docker.internal:host-gateway"
     command: ["python", "voice_agent.py", "start"]
     environment:
-      LIVEKIT_URL: ws://livekit-paob6cd3yz6t7cfdwnuahid1.46.224.200.122.sslip.io
-      LIVEKIT_API_KEY: livekit
-      LIVEKIT_API_SECRET: -IQtkom8t_oso7PwZckc746kS9hmsRJ72uibktL1vXXl6EG5
+      LIVEKIT_URL: ws://livekit-paob6cd3yz6t7cfdwnuahid1:7880
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
       HERMES_API_URL: http://host.docker.internal:8642/v1
       HERMES_API_KEY: ""
       HERMES_MODEL: deepseek-v4-flash
@@ -37,3 +41,29 @@ services:
       TTS_VOICE: en-US-EricNeural
       TTS_RATE: +0%
       AGENT_NAME: "Hermes"
+      LIVEKIT_AGENT_NAME: "hermes-voice"
+    networks:
+      - default
+      - livekit_core
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - default
+      - livekit_core
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  livekit_core:
+    external: true
+    name: paob6cd3yz6t7cfdwnuahid1

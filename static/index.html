@@ -211,19 +211,24 @@
                 volumeBar.style.width = '0%';
             });
 
-            // Step 3: Connect to the room FIRST
+            room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
+                if (state === 'disconnected') {
+                    setStatus('Disconnected');
+                    callBtn.classList.remove('active', 'connecting');
+                    callIcon.textContent = '📞';
+                    isCalling = false;
+                }
+            });
+
+            // Step 3: Connect to the room first.
             await room.connect(data.ws_url, data.token);
 
-            // Step 4: Now that we're connected, get mic and publish
+            // Step 4: Get the microphone and publish it using the current LiveKit API.
             micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const audioTracks = micStream.getAudioTracks();
-            if (audioTracks.length > 0) {
-                audioTrack = audioTracks[0];
-                await room.localParticipant.publishTrack(audioTrack, { source: 'microphone' });
-                console.log('Audio track published');
-            }
+            const mediaTrack = micStream.getAudioTracks()[0];
+            audioTrack = new LivekitClient.LocalAudioTrack(mediaTrack);
+            await room.localParticipant.publishTrack(audioTrack, { source: 'microphone' });
 
-            // All set!
             isCalling = true;
             muteBtn.disabled = false;
             setStatus('Connected — speak freely', 'active');
@@ -270,7 +275,7 @@
             audioTrack = null;
         }
         if (micStream) {
-            micStream.getTracks().forEach(t => t.stop());
+            micStream.getTracks().forEach((track) => track.stop());
             micStream = null;
         }
         if (room) {
@@ -290,8 +295,12 @@
     function toggleMute() {
         if (!audioTrack) return;
         isMuted = !isMuted;
-        audioTrack.enabled = !isMuted;
-        muteBtn.textContent = isMuted ? '🔇 Muted' : '🔊 Unmute';
+        if (isMuted) {
+            audioTrack.mute();
+        } else {
+            audioTrack.unmute();
+        }
+        muteBtn.textContent = isMuted ? '🔇 Muted' : '🔊 Mute';
     }
 </script>
 </body>

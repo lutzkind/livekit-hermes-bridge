@@ -36,6 +36,7 @@ TTS_VOICE = os.environ.get("TTS_VOICE", "en-US-EricNeural")
 TTS_RATE = os.environ.get("TTS_RATE", "+0%")
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "Hermes")
+LIVEKIT_AGENT_NAME = os.environ.get("LIVEKIT_AGENT_NAME", "hermes-voice")
 
 # ── FastAPI app ─────────────────────────────────────────────────────────────
 
@@ -92,6 +93,11 @@ async def create_room(req: CreateRoomRequest):
                 name=room_name,
                 empty_timeout=300,
                 max_participants=2,
+                agents=[
+                    api.RoomAgentDispatch(
+                        agent_name=LIVEKIT_AGENT_NAME,
+                    )
+                ],
             )
         )
         logger.info(f"Created room: {room_name}")
