@@ -51,6 +51,19 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.routers.http-livekit-bridge.entryPoints=http
+      - traefik.http.routers.http-livekit-bridge.rule=Host(`livekit-bridge.46.224.200.122.sslip.io`)
+      - traefik.http.routers.http-livekit-bridge.middlewares=redirect-to-https
+      - traefik.http.routers.https-livekit-bridge.entryPoints=https
+      - traefik.http.routers.https-livekit-bridge.rule=Host(`livekit-bridge.46.224.200.122.sslip.io`)
+      - traefik.http.routers.https-livekit-bridge.middlewares=gzip
+      - traefik.http.routers.https-livekit-bridge.tls=true
+      - traefik.http.routers.https-livekit-bridge.tls.certresolver=letsencrypt
+      - traefik.http.services.livekit-bridge.loadbalancer.server.port=80
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
@@ -58,12 +71,15 @@ services:
     networks:
       - default
       - livekit_core
+      - coolify
 
 volumes:
   caddy_data:
   caddy_config:
 
 networks:
+  coolify:
+    external: true
   livekit_core:
     external: true
     name: paob6cd3yz6t7cfdwnuahid1
