@@ -52,12 +52,20 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class CreateRoomRequest(BaseModel):
     room_name: str = ""  # auto-generated if empty
+    user_id: str = ""
+    user_name: str = "You"
+    session_id: str = ""
 
 
 class CreateRoomResponse(BaseModel):
     room_name: str
     token: str
     ws_url: str
+    user_identity: str
+    user_name: str
+    agent_identity: str
+    agent_name: str
+    session_id: str
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -81,6 +89,9 @@ async def create_room(req: CreateRoomRequest):
     """Create a LiveKit room and return an access token."""
     import uuid
     room_name = req.room_name or f"hermes-{uuid.uuid4().hex[:8]}"
+    user_identity = (req.user_id or "").strip() or f"user-{uuid.uuid4().hex[:8]}"
+    user_name = (req.user_name or "").strip() or "You"
+    session_id = (req.session_id or "").strip() or f"livekit:{room_name}:{user_identity}"
 
     async with LiveKitAPI(
         url=LIVEKIT_HOST,
@@ -104,8 +115,8 @@ async def create_room(req: CreateRoomRequest):
 
         # Generate token for the user
         token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
-            .with_identity(f"user-{uuid.uuid4().hex[:8]}") \
-            .with_name("You") \
+            .with_identity(user_identity) \
+            .with_name(user_name) \
             .with_grants(VideoGrants(
                 room_join=True,
                 room=room_name,
@@ -117,6 +128,11 @@ async def create_room(req: CreateRoomRequest):
         room_name=room_name,
         token=token,
         ws_url=LIVEKIT_WS_URL,
+        user_identity=user_identity,
+        user_name=user_name,
+        agent_identity=LIVEKIT_AGENT_NAME,
+        agent_name=AGENT_NAME,
+        session_id=session_id,
     )
 
 

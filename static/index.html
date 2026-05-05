@@ -120,6 +120,10 @@
     let audioContext = null;
     let transcript = [];
     let localAudioEl = null;
+    let localIdentity = null;
+    let localLabel = 'You';
+    let agentIdentity = 'hermes-voice';
+    let agentLabel = 'Hermes';
 
     const callBtn = document.getElementById('callBtn');
     const callIcon = document.getElementById('callIcon');
@@ -128,13 +132,65 @@
     const volumeBar = document.getElementById('volumeBar');
     const muteBtn = document.getElementById('muteBtn');
 
-    function addTranscript(type, text) {
-        transcript.push({ type, text, time: Date.now() });
+    function addTranscript(type, text, label) {
+        transcript.push({ type, text, label: label || (type === 'user' ? localLabel : agentLabel), time: Date.now() });
         const div = document.createElement('div');
         div.className = 'msg';
-        div.innerHTML = `<span class="label ${type}">${type === 'user' ? 'You' : 'Hermes'}:</span>${escapeHtml(text)}`;
+        const safeLabel = escapeHtml(label || (type === 'user' ? localLabel : agentLabel));
+        div.innerHTML = `<span class="label ${type}">${safeLabel}:</span>${escapeHtml(text)}`;
         transcriptEl.appendChild(div);
         transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+
+    function normalizeIdentity(value) {
+        return typeof value === 'string' ? value.trim().toLowerCase() : '';
+    }
+
+    function resolveTranscriptPeer(msg, participant) {
+        const senderIdentity = normalizeIdentity(
+            participant?.identity
+            || msg?.participantIdentity
+            || msg?.peerIdentity
+            || msg?.speakerIdentity
+            || msg?.senderIdentity
+            || msg?.peer
+        );
+        const senderLabel = (
+            participant?.name
+            || msg?.participantName
+            || msg?.speakerName
+            || msg?.senderName
+            || msg?.name
+            || ''
+        ).trim();
+
+        if (senderIdentity) {
+            if (senderIdentity === normalizeIdentity(localIdentity)) {
+                return { type: 'user', label: localLabel };
+            }
+            if (senderIdentity === normalizeIdentity(agentIdentity)) {
+                return { type: 'agent', label: agentLabel };
+            }
+        }
+
+        const explicitRole = normalizeIdentity(msg?.role || msg?.speakerRole || msg?.peerRole);
+        if (explicitRole === 'assistant' || explicitRole === 'agent' || explicitRole === 'ai') {
+            return { type: 'agent', label: senderLabel || agentLabel };
+        }
+        if (explicitRole === 'user' || explicitRole === 'human') {
+            return { type: 'user', label: senderLabel || localLabel };
+        }
+
+        if (senderLabel) {
+            if (normalizeIdentity(senderLabel) === normalizeIdentity(agentLabel)) {
+                return { type: 'agent', label: senderLabel };
+            }
+            if (normalizeIdentity(senderLabel) === normalizeIdentity(localLabel)) {
+                return { type: 'user', label: senderLabel };
+            }
+        }
+
+        return participant ? { type: 'agent', label: senderLabel || agentLabel } : { type: 'user', label: localLabel };
     }
 
     function escapeHtml(text) {
@@ -173,6 +229,10 @@
             });
             if (!res.ok) throw new Error('Failed to create room');
             const data = await res.json();
+            localIdentity = data.user_identity || null;
+            localLabel = data.user_name || 'You';
+            agentIdentity = data.agent_identity || 'hermes-voice';
+            agentLabel = data.agent_name || 'Hermes';
 
             setStatus('Connecting...', 'connecting');
 
@@ -196,7 +256,8 @@
                 try {
                     const msg = JSON.parse(new TextDecoder().decode(payload));
                     if (msg.type === 'transcript') {
-                        addTranscript('user', msg.text);
+                        const peer = resolveTranscriptPeer(msg, participant);
+                        addTranscript(peer.type, msg.text, peer.label);
                     }
                 } catch(e) {}
             });
@@ -222,6 +283,8 @@
 
             // Step 3: Connect to the room first.
             await room.connect(data.ws_url, data.token);
+            localIdentity = room.localParticipant?.identity || localIdentity;
+            localLabel = room.localParticipant?.name || localLabel;
 
             // Step 4: Get the microphone and publish it using the current LiveKit API.
             micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -235,7 +298,7 @@
             callBtn.classList.remove('connecting');
             callBtn.classList.add('active');
             callIcon.textContent = '🔴';
-            addTranscript('agent', "Hello, I'm Hermes. Go ahead, I'm listening.");
+            addTranscript('agent', "Hello, I'm Hermes. Go ahead, I'm listening.", agentLabel);
 
             // Set up volume monitoring
             setupVolumeMonitor(micStream);

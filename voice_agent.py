@@ -51,6 +51,7 @@ def prewarm(proc: JobProcess):
 async def entrypoint(job: JobContext):
     """Main entrypoint when a voice agent is dispatched to a room."""
     logger.info(f"Joining room: {job.room.name}")
+    hermes_session_id = f"livekit:{job.room.name}"
 
     # ── LLM — OpenAI-compatible, pointed at Hermes API ─────
     from openai import AsyncOpenAI
@@ -60,6 +61,7 @@ async def entrypoint(job: JobContext):
     openai_client = AsyncOpenAI(
         base_url=HERMES_API_URL,
         api_key=HERMES_API_KEY or "dummy",
+        default_headers={"X-Hermes-Session-Id": hermes_session_id},
     )
 
     class HermesLLM(llm_module.LLM):
